@@ -12,27 +12,32 @@ Adds a follow option in the user context menu to always be in the same VC as the
 - Manual trigger option for more control
 - Visual indicator in the toolbar showing who you're following
 
-## Installation
 
-1. Enable the plugin in Vencord's settings
-2. Right-click a user and select "Follow User" from the context menu
 
-## Configuration
 
-- **Execute On Follow**: Make sure to be in the same VC when following a user (default: true)
-- **Only Manual Trigger**: Only trigger on indicator click (default: false)
-- **Follow Leave**: Also leave when the followed user leaves (default: false)
-- **Auto Move Back**: Automatically move back to the VC of the followed user when you get moved (default: false)
-- **Channel Full**: Attempt to move you to the channel when it's not full anymore (default: true)
 
-## Usage
 
-Right-click any user and select "Follow User" from the context menu. The plugin will automatically join the same voice channel as them whenever they move. A follow indicator will appear in the toolbar - click it to manually trigger a follow action, or right-click it to unfollow.
 
-## AI Disclaimer
+## Installation 
 
-This plugin was developed with assistance from **Cursor.AI** (Cursor's AI coding assistant). The AI was used to help with code generation, debugging, documentation, and implementation. While AI assistance was utilized, all code and features were reviewed and tested to ensure quality and functionality.
+### 🪄 Installation Wizard
+The easiest way to install this plugin is to use the **[Plugin Installer Generator](https://bluscream-vencord-plugins.github.io)**. 
+Simply select this plugin from the list and download your custom install script.
 
-## License
-
-Unlicense
+### 💻 Manual Installation (PowerShell)
+Alternatively, you can run this snippet in your Equicord/Vencord source directory:
+```powershell
+$ErrorActionPreference = "Stop"
+winget install -e --id Git.Git
+winget install -e --id OpenJS.NodeJS
+npm install -g pnpm
+git clone https://github.com/Equicord/Equicord Equicord
+New-Item -ItemType Directory -Force -Path "Equicord\src\userplugins" | Out-Null
+git clone https://github.com/bluscream-vencord-plugins/vc-followUser.git -b "master" "Equicord\src\userplugins\vc-followUser"
+cd "Equicord"
+npm install -g pnpm
+pnpm install --frozen-lockfile
+pnpm build
+pnpm buildWeb
+pnpm inject
+```
