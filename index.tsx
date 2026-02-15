@@ -1,11 +1,11 @@
-// Authors: Bluscream, Cursor.AI
-// Created at 2025-10-05 18:00:48
-/*
- * Vencord, a Discord client mod
- * Copyright (c) 2024 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
+export const pluginInfo = {
+    id: "vcFollowUser",
+    name: "Voice Channel Follow User",
+    description: "Adds a follow option in the user context menu to always be in the same VC as them",
+    color: "#7289da"
+};
 
+// Created at 2025-10-05 18:00:48
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings, useSettings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
@@ -14,9 +14,7 @@ import { classes } from "@utils/misc";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 
-const pluginId = "vcFollowUser";
-const pluginName = "Voice Channel Follow User";
-const logger = new Logger(pluginName, "#7289da");
+const logger = new Logger(pluginInfo.name, pluginInfo.color);
 import type { Channel, User } from "@vencord/discord-types";
 import { findByPropsLazy, findComponentByCodeLazy, findStoreLazy } from "@webpack";
 import {
@@ -286,7 +284,7 @@ const UserContext: NavContextMenuPatchCallback = (children, { user }: UserContex
 };
 
 export default definePlugin({
-    name: pluginName,
+    name: "Voice Channel Follow User",
     description: "Adds a follow option in the user context menu to always be in the same VC as them",
     authors: [
         Devs.D3SOX,
