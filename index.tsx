@@ -24,19 +24,8 @@ import type { PropsWithChildren, SVGProps } from "react";
 import { settings } from "./settings";
 // endregion Imports
 
-// region PluginInfo
-export const pluginInfo = {
-    id: "voiceChannelFollowUser",
-    name: "VoiceChannelFollowUser",
-    description: "Follow a user to always be in the same voice channel as them",
-    color: "#7289da",
-    authors: [
-        Devs.D3SOX,
-        { name: "Bluscream", id: 467777925790564352n },
-        { name: "Assistant", id: 0n }
-    ],
-};
-// endregion PluginInfo
+import { pluginInfo } from "./info";
+export { pluginInfo };
 
 // region Variables
 const logger = new Logger(pluginInfo.id, pluginInfo.color);
