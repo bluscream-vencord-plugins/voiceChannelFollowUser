@@ -4,78 +4,44 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-// // Plugin originally written for Equicord at 2026-02-16 by https://github.com/Bluscream, https://antigravity.google
-// region Imports
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
-import { useSettings } from "@api/Settings";
+import { ChannelToolbarButton } from "@api/HeaderBar";
 import ErrorBoundary from "@components/ErrorBoundary";
-import { Logger } from "@utils/Logger";
-import { classes } from "@utils/misc";
 import definePlugin from "@utils/types";
 import type { Channel, User } from "@vencord/discord-types";
-import { findByPropsLazy, findComponentByCodeLazy, findStoreLazy } from "@webpack";
 import {
+    AuthenticationStore,
+    ChannelActions,
     ChannelStore,
+    lodash,
     Menu,
     PermissionsBits,
     PermissionStore,
-    React,
     SelectedChannelStore,
-showToast, UserStore
+    showToast,
+    UserStore,
+    VoiceStateStore
 } from "@webpack/common";
-import type { PropsWithChildren, SVGProps } from "react";
+import type { SVGProps } from "react";
 
-// endregion Imports
 import { pluginInfo } from "./info";
 import { settings } from "./settings";
 export { pluginInfo };
 
-// region Variables
-const logger = new Logger(pluginInfo.id, pluginInfo.color);
-const HeaderBarIcon = findComponentByCodeLazy(".HEADER_BAR_BADGE_TOP:", '.iconBadge,"top"');
-const ChannelActions: {
-    disconnect: () => void;
-    selectVoiceChannel: (channelId: string) => void;
-} = findByPropsLazy("disconnect", "selectVoiceChannel");
-const VoiceStateStore: VoiceStateStore = findStoreLazy("VoiceStateStore");
-const CONNECT = 1n << 20n;
+const PATTERNS = {
+    /** Id of the item added to the user context menu. */
+    menuItemId: "vc-follow-user",
+    /** Wait for the followed user to settle before joining, so channel hopping sends one join. */
+    followDebounceMs: 750,
+    /** At most one automatic move back per this many milliseconds. */
+    moveBackCooldownMs: 5000
+};
 
-interface BaseIconProps extends IconProps {
-    viewBox: string;
-}
-
-interface IconProps extends SVGProps<SVGSVGElement> {
-    className?: string;
-    height?: string | number;
-    width?: string | number;
-}
-
-interface VoiceState {
+interface OwnVoiceState {
     userId: string;
-    channelId?: string;
-    oldChannelId?: string;
-    deaf: boolean;
-    mute: boolean;
-    selfDeaf: boolean;
-    selfMute: boolean;
-    selfStream: boolean;
-    selfVideo: boolean;
-    sessionId: string;
-    suppress: boolean;
-    requestToSpeakTimestamp: string | null;
-}
-
-interface VoiceStateStore {
-    getAllVoiceStates(): VoiceStateEntry;
-    getVoiceStatesForChannel(channelId: string): VoiceStateMember;
-}
-
-interface VoiceStateEntry {
-    [guildIdOrMe: string]: VoiceStateMember;
-}
-
-interface VoiceStateMember {
-    [userId: string]: VoiceState;
+    sessionId?: string;
+    channelId?: string | null;
+    oldChannelId?: string | null;
 }
 
 interface UserContextProps {
@@ -83,199 +49,195 @@ interface UserContextProps {
     guildId?: string;
     user: User;
 }
-// endregion Variables
 
-// region Utils
-function Icon({ height = 24, width = 24, className, children, viewBox, ...svgProps }: PropsWithChildren<BaseIconProps>) {
+let lastSelectedChannelId: string | null = null;
+let ownChannelId: string | null = null;
+let lastMoveBack = 0;
+
+function FollowIcon(props: SVGProps<SVGSVGElement>) {
     return (
-        <svg
-            className={classes(className, "vc-icon")}
-            role="img"
-            width={width}
-            height={height}
-            viewBox={viewBox}
-            {...svgProps}
-        >
-            {children}
+        <svg role="img" width={24} height={24} viewBox="0 -960 960 960" {...props}>
+            <path fill="currentColor" d="m480-120-58-52q-101-91-167-157T150-447.5Q111-500 95.5-544T80-634q0-94 63-157t157-63q52 0 99 22t81 62q34-40 81-62t99-22q94 0 157 63t63 157q0 46-15.5 90T810-447.5Q771-395 705-329T538-172l-58 52Zm0-108q96-86 158-147.5t98-107q36-45.5 50-81t14-70.5q0-60-40-100t-100-40q-47 0-87 26.5T518-680h-76q-15-41-55-67.5T300-774q-60 0-100 40t-40 100q0 35 14 70.5t50 81q36 45.5 98 107T480-228Zm0-273Z" />
         </svg>
     );
 }
 
-function FollowIcon(props: IconProps) {
+function UnfollowIcon(props: SVGProps<SVGSVGElement>) {
     return (
-        <Icon {...props} className={classes(props.className, "vc-follow-icon")} viewBox="0 -960 960 960">
-            <path fill="currentColor" d="m480-120-58-52q-101-91-167-157T150-447.5Q111-500 95.5-544T80-634q0-94 63-157t157-63q52 0 99 22t81 62q34-40 81-62t99-22q94 0 157 63t63 157q0 46-15.5 90T810-447.5Q771-395 705-329T538-172l-58 52Zm0-108q96-86 158-147.5t98-107q36-45.5 50-81t14-70.5q0-60-40-100t-100-40q-47 0-87 26.5T518-680h-76q-15-41-55-67.5T300-774q-60 0-100 40t-40 100q0 35 14 70.5t50 81q36 45.5 98 107T480-228Zm0-273Z" />
-        </Icon>
-    );
-}
-
-function UnfollowIcon(props: IconProps) {
-    return (
-        <Icon {...props} className={classes(props.className, "vc-unfollow-icon")} viewBox="0 -960 960 960">
+        <svg role="img" width={24} height={24} viewBox="0 -960 960 960" {...props}>
             <path fill="currentColor" d="m480-120-58-52q-101-91-167-157T150-447.5Q111-500 95.5-544T80-634q0-94 63-157t157-63q52 0 99 22t81 62q34-40 81-62t99-22q94 0 157 63t63 157q0 46-15.5 90T810-447.5Q771-395 705-329T538-172l-58 52Z" />
-        </Icon>
+        </svg>
     );
 }
 
-function getChannelId(userId: string) {
-    if (!userId) return null;
-    try {
-        const states = VoiceStateStore.getAllVoiceStates();
-        for (const users of Object.values(states)) {
-            if (users[userId]) return users[userId].channelId ?? null;
-        }
-    } catch (e) { /* ignored */ }
-    return null;
+function followedChannelId() {
+    const { followUserId } = settings.store;
+    return followUserId ? VoiceStateStore.getVoiceStateForUser(followUserId)?.channelId ?? null : null;
 }
 
-function triggerFollow(userChannelId: string | null = getChannelId(settings.store.followUserId)) {
-    if (settings.store.followUserId) {
-        const myChanId = SelectedChannelStore.getVoiceChannelId();
-        if (userChannelId) {
-            if (userChannelId !== myChanId) {
-                const channel = ChannelStore.getChannel(userChannelId);
-                const voiceStates = VoiceStateStore.getVoiceStatesForChannel(userChannelId);
-                const memberCount = voiceStates ? Object.keys(voiceStates).length : null;
-                if (channel.type === 1 || PermissionStore.can(CONNECT, channel)) {
-                    if (channel.userLimit !== 0 && memberCount !== null && memberCount >= channel.userLimit && !PermissionStore.can(PermissionsBits.MOVE_MEMBERS, channel)) {
-                        showToast({ text: "Channel is full", variant: "critical" });
-                        return;
-                    }
-                    ChannelActions.selectVoiceChannel(userChannelId);
-                    showToast({ text: "Followed user into a new voice channel", variant: "success" });
-                } else {
-                    showToast({ text: "Insufficient permissions to enter in the voice channel", variant: "critical" });
-                }
-            } else {
-                showToast({ text: "You are already in the same channel", variant: "critical" });
-            }
-        } else if (myChanId) {
-            if (settings.store.followLeave) {
-                ChannelActions.disconnect();
-                showToast({ text: "Followed user left, disconnected", variant: "success" });
-            } else {
-                showToast({ text: "Followed user left, but not following disconnect", variant: "critical" });
-            }
-        } else {
-            showToast({ text: "Followed user is not in a voice channel", variant: "critical" });
-        }
+function isFull(channel: Channel) {
+    const count = Object.keys(VoiceStateStore.getVoiceStatesForChannel(channel.id)).length;
+    return channel.userLimit > 0 && count >= channel.userLimit && !PermissionStore.can(PermissionsBits.MOVE_MEMBERS, channel);
+}
+
+function followInto(channelId: string, manual: boolean) {
+    const channel = ChannelStore.getChannel(channelId);
+    if (!channel) return;
+    const fail = (text: string) => manual && showToast({ text, variant: "critical" });
+
+    if (channelId === SelectedChannelStore.getVoiceChannelId()) return fail("You're already in the same channel.");
+    if (channel.isPrivate()) {
+        if (!settings.store.followIntoCalls) return fail("Following into DM calls is turned off.");
+    } else if (!PermissionStore.can(PermissionsBits.VIEW_CHANNEL | PermissionsBits.CONNECT, channel)) {
+        return fail("You don't have permission to join that voice channel.");
     }
+    if (isFull(channel)) return fail("That voice channel is full.");
+
+    ChannelActions.selectVoiceChannel(channelId);
+}
+
+function canAutoFollow() {
+    const { followUserId, onlyManualTrigger, joinFromIdle } = settings.store;
+    return !!followUserId && !onlyManualTrigger && (!!SelectedChannelStore.getVoiceChannelId() || joinFromIdle);
+}
+
+const scheduleFollow = lodash.debounce(() => {
+    const channelId = followedChannelId();
+    if (channelId && canAutoFollow()) followInto(channelId, false);
+}, PATTERNS.followDebounceMs);
+
+function triggerFollow() {
+    const channelId = followedChannelId();
+    if (channelId) followInto(channelId, true);
+    else showToast({ text: "The followed user isn't in a voice channel.", variant: "critical" });
+}
+
+function unfollow() {
+    scheduleFollow.cancel();
+    settings.store.followUserId = "";
 }
 
 function toggleFollow(userId: string) {
-    if (settings.store.followUserId === userId) {
-        settings.store.followUserId = "";
-    } else {
-        settings.store.followUserId = userId;
-        if (settings.store.executeOnFollow) triggerFollow();
-    }
+    if (settings.store.followUserId === userId) return unfollow();
+    settings.store.followUserId = userId;
+    if (settings.store.executeOnFollow) triggerFollow();
 }
-// endregion Utils
 
-// region Components
 const UserContext: NavContextMenuPatchCallback = (children, { user }: UserContextProps) => {
     if (!user || user.id === UserStore.getCurrentUser().id) return;
     const isFollowed = settings.store.followUserId === user.id;
-    const label = isFollowed ? "Unfollow User" : "Follow User";
-    const icon = isFollowed ? UnfollowIcon : FollowIcon;
 
     children.splice(-1, 0, (
         <Menu.MenuGroup>
             <Menu.MenuItem
-                id="follow-user"
-                label={label}
+                id={PATTERNS.menuItemId}
+                label={isFollowed ? "Unfollow User" : "Follow User"}
                 action={() => toggleFollow(user.id)}
-                icon={icon}
+                icon={isFollowed ? UnfollowIcon : FollowIcon}
             />
         </Menu.MenuGroup>
     ));
 };
 
-function FollowIndicator() {
-    const { plugins: { VoiceChannelFollowUser: { followUserId } } } = useSettings(["plugins.VoiceChannelFollowUser.followUserId"]);
-    if (followUserId) {
-        return (
-            <HeaderBarIcon
-                tooltip={`Following ${UserStore.getUser(followUserId).username} (click to trigger manually, right-click to unfollow)`}
-                icon={UnfollowIcon}
-                onClick={() => triggerFollow()}
-                onContextMenu={() => { settings.store.followUserId = ""; }}
-            />
-        );
-    }
-    return null;
-}
-// endregion Components
+const FollowIndicator = ErrorBoundary.wrap(() => {
+    const { followUserId } = settings.use(["followUserId"]);
+    if (!followUserId) return null;
+    const name = UserStore.getUser(followUserId)?.username ?? followUserId;
+    return (
+        <ChannelToolbarButton
+            icon={UnfollowIcon}
+            tooltip={`Following ${name}. Click to join them, right-click to unfollow.`}
+            onClick={triggerFollow}
+            onContextMenu={unfollow}
+        />
+    );
+}, { noop: true });
 
-// region Definition
+function onOwnState(channelId: string | null) {
+    const previous = ownChannelId;
+    ownChannelId = channelId;
+    if (!channelId || !previous || channelId === previous) return;
+
+    const movedByOthers = channelId !== lastSelectedChannelId;
+    lastSelectedChannelId = channelId;
+    if (!settings.store.autoMoveBack || !movedByOthers || !canAutoFollow()) return;
+    if (Date.now() - lastMoveBack < PATTERNS.moveBackCooldownMs) return;
+    lastMoveBack = Date.now();
+    scheduleFollow();
+}
+
+function onFollowedState(channelId: string | null, oldChannelId: string | null) {
+    if (channelId) {
+        if (canAutoFollow()) scheduleFollow();
+        return;
+    }
+    scheduleFollow.cancel();
+    const mine = SelectedChannelStore.getVoiceChannelId();
+    if (settings.store.followLeave && !settings.store.onlyManualTrigger && oldChannelId && mine === oldChannelId) {
+        ChannelActions.disconnect();
+    }
+}
+
+function onOtherLeft(oldChannelId: string) {
+    const { followUserId } = settings.store;
+    if (!settings.store.channelFull || oldChannelId === SelectedChannelStore.getVoiceChannelId()) return;
+    if (!VoiceStateStore.getVoiceStatesForChannel(oldChannelId)[followUserId]) return;
+    if (canAutoFollow()) scheduleFollow();
+}
+
+function reset() {
+    scheduleFollow.cancel();
+    settings.store.followUserId = "";
+    lastSelectedChannelId = ownChannelId = null;
+    lastMoveBack = 0;
+}
+
 export default definePlugin({
     name: pluginInfo.name,
     description: pluginInfo.description,
     authors: pluginInfo.authors,
     settings,
 
-    patches: [
-        {
-            find: ".controlButtonWrapper,",
-            replacement: {
-                match: /(function \i\(\i\){)(.{1,200}toolbar.{1,100}mobileToolbar)/,
-                replace: "$1$self.addIconToToolBar(arguments[0]);$2"
-            }
-        },
-    ],
-
     contextMenus: {
         "user-context": UserContext
     },
 
+    headerBarButton: {
+        icon: UnfollowIcon,
+        location: "channeltoolbar",
+        render: () => <FollowIndicator />
+    },
+
+    start() {
+        reset();
+        ownChannelId = lastSelectedChannelId = SelectedChannelStore.getVoiceChannelId() ?? null;
+    },
+
+    stop: reset,
+
     flux: {
-        VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceState[]; }) {
-            if (settings.store.onlyManualTrigger || !settings.store.followUserId) return;
-            for (const { userId, channelId, oldChannelId } of voiceStates) {
-                if (channelId !== oldChannelId) {
-                    const isMe = userId === UserStore.getCurrentUser().id;
-                    if (settings.store.autoMoveBack && isMe && channelId && oldChannelId) {
-                        triggerFollow();
-                        continue;
-                    }
+        VOICE_CHANNEL_SELECT({ channelId }: { channelId: string | null; }) {
+            lastSelectedChannelId = channelId;
+        },
 
-                    if (settings.store.channelFull && !isMe && !channelId && oldChannelId && oldChannelId !== SelectedChannelStore.getVoiceChannelId()) {
-                        const channel = ChannelStore.getChannel(oldChannelId);
-                        const channelVoiceStates = VoiceStateStore.getVoiceStatesForChannel(oldChannelId);
-                        const memberCount = channelVoiceStates ? Object.keys(channelVoiceStates).length : null;
-                        if (channel.userLimit !== 0 && memberCount !== null && memberCount === (channel.userLimit - 1) && !PermissionStore.can(PermissionsBits.MOVE_MEMBERS, channel)) {
-                            const users = Object.values(channelVoiceStates).map(x => x.userId);
-                            if (users.includes(settings.store.followUserId)) {
-                                triggerFollow(oldChannelId);
-                                continue;
-                            }
-                        }
-                    }
+        VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: OwnVoiceState[]; }) {
+            const { followUserId } = settings.store;
+            if (!followUserId) return;
+            const me = UserStore.getCurrentUser()?.id;
+            if (followUserId === me) return unfollow();
+            const sessionId = AuthenticationStore.getSessionId();
 
-                    if (settings.store.followUserId === userId) {
-                        if (channelId) triggerFollow(channelId);
-                        else if (oldChannelId) triggerFollow(null);
-                    }
+            for (const { userId, sessionId: stateSession, channelId = null, oldChannelId = null } of voiceStates) {
+                if (userId === me) {
+                    if (stateSession === sessionId) onOwnState(channelId);
+                } else if (userId === followUserId) {
+                    if (channelId !== oldChannelId) onFollowedState(channelId, oldChannelId);
+                } else if (!channelId && oldChannelId) {
+                    onOtherLeft(oldChannelId);
                 }
             }
         },
-    },
 
-    addIconToToolBar(e: { toolbar: React.ReactNode[] | React.ReactNode; }) {
-        if (Array.isArray(e.toolbar)) {
-            return e.toolbar.unshift(
-                <ErrorBoundary noop={true} key="follow-indicator">
-                    <FollowIndicator />
-                </ErrorBoundary>
-            );
-        }
-
-        e.toolbar = [
-            <ErrorBoundary noop={true} key="follow-indicator">
-                <FollowIndicator />
-            </ErrorBoundary>,
-            e.toolbar,
-        ];
-    },
+        LOGOUT: reset
+    }
 });
-// endregion Definition

@@ -10,39 +10,43 @@ import { OptionType } from "@utils/types";
 export const settings = definePluginSettings({
     executeOnFollow: {
         type: OptionType.BOOLEAN,
-        description: "Make sure to be in the same VC when following a user",
-        restartNeeded: false,
+        description: "Join the user's voice channel right away when you start following them.",
         default: true
     },
     onlyManualTrigger: {
         type: OptionType.BOOLEAN,
-        description: "Only trigger on indicator click",
-        restartNeeded: false,
+        description: "Only follow when you click the indicator in the channel toolbar.",
         default: false
     },
     followLeave: {
         type: OptionType.BOOLEAN,
-        description: "Also leave when the followed user leaves",
-        restartNeeded: false,
+        description: "Leave voice when the followed user leaves the channel you share with them.",
         default: false
     },
     autoMoveBack: {
         type: OptionType.BOOLEAN,
-        description: "Automatically move back to the VC of the followed user when you got moved",
-        restartNeeded: false,
+        description: "Move back to the followed user when someone else moves you to another channel.",
+        default: false
+    },
+    channelFull: {
+        type: OptionType.BOOLEAN,
+        description: "Join the followed user's channel as soon as a slot frees up.",
+        default: true
+    },
+    joinFromIdle: {
+        type: OptionType.BOOLEAN,
+        description: "Also follow while you're not in voice. When off, leaving voice yourself stops automatic joins until you join a channel again.",
+        default: false
+    },
+    followIntoCalls: {
+        type: OptionType.BOOLEAN,
+        description: "Also follow into DM and group DM calls.",
         default: false
     },
     followUserId: {
         type: OptionType.STRING,
-        description: "Followed User ID",
-        restartNeeded: false,
+        description: "The user you're following this session.",
         hidden: true,
-        default: "",
-    },
-    channelFull: {
-        type: OptionType.BOOLEAN,
-        description: "Attempt to move you to the channel when is not full anymore",
-        restartNeeded: false,
-        default: true,
+        default: ""
     }
 });
