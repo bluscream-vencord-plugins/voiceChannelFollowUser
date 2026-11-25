@@ -7,6 +7,7 @@
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { ChannelToolbarButton } from "@api/HeaderBar";
 import ErrorBoundary from "@components/ErrorBoundary";
+import { proxyLazy } from "@utils/lazy";
 import definePlugin from "@utils/types";
 import type { Channel, User } from "@vencord/discord-types";
 import {
@@ -101,10 +102,10 @@ function canAutoFollow() {
     return !!followUserId && !onlyManualTrigger && (!!SelectedChannelStore.getVoiceChannelId() || joinFromIdle);
 }
 
-const scheduleFollow = lodash.debounce(() => {
+const scheduleFollow = proxyLazy(() => lodash.debounce(() => {
     const channelId = followedChannelId();
     if (channelId && canAutoFollow()) followInto(channelId, false);
-}, PATTERNS.followDebounceMs);
+}, PATTERNS.followDebounceMs));
 
 function triggerFollow() {
     const channelId = followedChannelId();
